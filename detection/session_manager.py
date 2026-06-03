@@ -39,6 +39,7 @@ class SessionManager:
             "event_count": 0,
             "sequence": self._next_sequence - 1,
             "status": "active",
+            "is_staff": False,
         }
 
         self.active_sessions[track_id] = session
@@ -71,6 +72,7 @@ class SessionManager:
             "event_count": existing["event_count"] if existing is not None else 0,
             "sequence": sequence,
             "status": "active",
+            "is_staff": existing["is_staff"] if existing is not None else False,
         }
 
         self.active_sessions[track_id] = session
@@ -103,6 +105,20 @@ class SessionManager:
                 session["event_count"] = int(session.get("event_count", 0)) + amount
                 return session["event_count"]
         return None
+
+    def get_active_session(self, track_id: int) -> Optional[Dict[str, object]]:
+        return self.active_sessions.get(track_id)
+
+    def get_session(self, visitor_id: str) -> Optional[Dict[str, object]]:
+        all_sessions = list(self.active_sessions.values()) + self.closed_sessions
+        return next((session for session in all_sessions if session["visitor_id"] == visitor_id), None)
+
+    def set_staff(self, visitor_id: str, is_staff: bool = True) -> bool:
+        session = self.get_session(visitor_id)
+        if session is None:
+            return False
+        session["is_staff"] = is_staff
+        return True
 
     def get_session_sequence(self, visitor_id: str) -> Optional[int]:
         """Return the numeric session sequence for a visitor ID."""

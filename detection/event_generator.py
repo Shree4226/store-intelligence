@@ -107,6 +107,25 @@ class EntryEventGenerator:
             }
         )
 
+    def _parse_entry_time(self, entry_time_str: str) -> float:
+        try:
+            return datetime.fromisoformat(entry_time_str.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            return time.time()
+
+    def _mark_staff_if_needed(self, track_id: int) -> None:
+        session = self.session_manager.get_active_session(track_id)
+        if session is None or session.get("is_staff", False):
+            return
+
+        entry_time_str = session.get("entry_time")
+        if not isinstance(entry_time_str, str):
+            return
+
+        elapsed = time.time() - self._parse_entry_time(entry_time_str)
+        if elapsed >= 300:
+            self.session_manager.set_staff(session["visitor_id"], True)
+
     def load_model(self) -> None:
         """Load the YOLOv8 model and move it to CPU."""
         try:
@@ -185,6 +204,9 @@ class EntryEventGenerator:
         }
         if visitor_id is not None:
             payload["visitor_id"] = visitor_id
+            session = self.session_manager.get_session(visitor_id)
+            if session is not None and session.get("is_staff", False):
+                payload["is_staff"] = True
         if zone_id is not None:
             payload["zone_id"] = zone_id
         if confidence is not None:
@@ -304,6 +326,7 @@ class EntryEventGenerator:
         inside = self.is_inside_polygon(centroid, ENTRY_POLYGON)
         current_zone = self.zone_manager.get_current_zone((int(centroid[0]), int(centroid[1])))
         history = self._update_track_history(track_id, centroid, inside, current_zone)
+        self._mark_staff_if_needed(track_id)
 
         direction = None
         zone_confidence = (
