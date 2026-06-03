@@ -40,6 +40,7 @@ class SessionManager:
             "sequence": self._next_sequence - 1,
             "status": "active",
             "is_staff": False,
+            "purchase_made": False,
         }
 
         self.active_sessions[track_id] = session
@@ -73,6 +74,7 @@ class SessionManager:
             "sequence": sequence,
             "status": "active",
             "is_staff": existing["is_staff"] if existing is not None else False,
+            "purchase_made": existing["purchase_made"] if existing is not None else False,
         }
 
         self.active_sessions[track_id] = session
@@ -96,6 +98,19 @@ class SessionManager:
         if session is None:
             return None
         return session["visitor_id"]
+
+    def mark_purchase(self, visitor_id: str) -> bool:
+        """Mark that a visitor session has completed a purchase."""
+        session = self.get_session(visitor_id)
+        if session is None:
+            return False
+        session["purchase_made"] = True
+        return True
+
+    def has_purchase(self, visitor_id: str) -> bool:
+        """Return whether a session has a purchase recorded."""
+        session = self.get_session(visitor_id)
+        return bool(session and session.get("purchase_made", False))
 
     def increment_event_count(self, visitor_id: str, amount: int = 1) -> Optional[int]:
         """Increment the event count for a visitor session."""

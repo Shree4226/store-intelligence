@@ -225,6 +225,7 @@ class EntryEventGenerator:
         previous_zone = previous.get("current_zone")
         same_zone = current_zone is not None and previous_zone == current_zone
         zone_enter_time = previous.get("zone_enter_time")
+        previous_zone_enter_time = previous.get("zone_enter_time")
         dwell_count = previous.get("dwell_count", 0)
 
         if not same_zone:
@@ -238,6 +239,7 @@ class EntryEventGenerator:
             "current_inside": inside,
             "previous_zone": previous_zone,
             "current_zone": current_zone,
+            "previous_zone_enter_time": previous_zone_enter_time,
             "zone_enter_time": zone_enter_time,
             "dwell_count": dwell_count,
             "entry_streak": previous.get("entry_streak", 0),
@@ -358,6 +360,22 @@ class EntryEventGenerator:
             )
             self._write_event(event)
             events.append(event)
+
+            if history["previous_zone"] == "BILLING":
+                billing_exit_time = history.get("previous_zone_enter_time")
+                if billing_exit_time is not None:
+                    billing_duration = time.time() - float(billing_exit_time)
+                    if billing_duration < 60 and not self.session_manager.has_purchase(visitor_id):
+                        abandon_event = self._event_payload(
+                            "BILLING_QUEUE_ABANDON",
+                            track_id,
+                            visitor_id,
+                            zone_id=history["previous_zone"],
+                            confidence=zone_confidence,
+                        )
+                        abandon_event["billing_duration_s"] = round(billing_duration, 2)
+                        self._write_event(abandon_event)
+                        events.append(abandon_event)
 
         if history["previous_zone"] != history["current_zone"] and history["current_zone"] is not None:
             visitor_id = self.session_manager.get_visitor_id(track_id)
