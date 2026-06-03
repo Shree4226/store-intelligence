@@ -3,7 +3,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Body, HTTPException
 
 from models.event import EventIn, IngestResponse
-from services.events import ingest_events
+from models.metrics import MetricsResponse
+from services.events import get_metrics_for_store, ingest_events
 
 router = APIRouter()
 
@@ -30,3 +31,9 @@ async def ingest_events_route(
 
     result = ingest_events(validated_events)
     return IngestResponse(**result)
+
+
+@router.get("/stores/{store_id}/metrics", response_model=MetricsResponse)
+async def get_store_metrics(store_id: str) -> MetricsResponse:
+    metrics = get_metrics_for_store(store_id)
+    return MetricsResponse(**metrics)
