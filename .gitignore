@@ -1,0 +1,11 @@
+data/
+*.mp4
+*.avi
+*.mov
+*.zip
+
+venv/
+__pycache__/
+*.pyc
+
+.env
