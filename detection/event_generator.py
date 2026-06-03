@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 import ultralytics
 from ultralytics import YOLO
+from session_manager import SessionManager
 
 
 # Configuration
@@ -62,6 +63,8 @@ class EntryEventGenerator:
         self.model: Optional[YOLO] = None
         self.tracker_config = self._resolve_tracker_config()
         self.track_history: Dict[int, Dict[str, object]] = {}
+        self.session_manager = SessionManager()
+        self.session_manager.load_sessions()
         self.entry_count = 0
         self.exit_count = 0
         self.load_model()
@@ -136,14 +139,22 @@ class EntryEventGenerator:
         away_vec = self._movement_vector(curr, store_center)
         return self._dot(move_vec, away_vec) > 0
 
-    def _event_payload(self, event_type: str, track_id: int) -> Dict[str, object]:
+    def _event_payload(
+        self,
+        event_type: str,
+        track_id: int,
+        visitor_id: Optional[str] = None,
+    ) -> Dict[str, object]:
         """Build an event payload for JSONL output."""
-        return {
+        payload: Dict[str, object] = {
             "event_type": event_type,
             "track_id": track_id,
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "camera_id": CAMERA_ID,
         }
+        if visitor_id is not None:
+            payload["visitor_id"] = visitor_id
+        return payload
 
     def _update_track_history(
         self,
@@ -236,15 +247,21 @@ class EntryEventGenerator:
 
         direction = None
         if self._should_generate_entry(history):
-            event = self._event_payload("entry", track_id)
+            visitor_id = self.session_manager.create_entry_session(track_id)
+            event = self._event_payload("entry", track_id, visitor_id)
             self._write_event(event)
+            self.session_manager.increment_event_count(visitor_id)
             self.entry_count += 1
             history["last_event"] = "entry"
             events.append(event)
             direction = "entry"
         elif self._should_generate_exit(history):
-            event = self._event_payload("exit", track_id)
+            visitor_id = self.session_manager.get_visitor_id(track_id)
+            event = self._event_payload("exit", track_id, visitor_id)
             self._write_event(event)
+            if visitor_id is not None:
+                self.session_manager.increment_event_count(visitor_id)
+            self.session_manager.close_session(track_id)
             self.exit_count += 1
             history["last_event"] = "exit"
             events.append(event)
@@ -453,6 +470,7 @@ class EntryEventGenerator:
 
         cap.release()
         writer.release()
+        self.session_manager.save_sessions()
 
         logger.info("Event generation completed")
         logger.info(f"Total frames read: {frame_number}")
@@ -460,6 +478,7 @@ class EntryEventGenerator:
         logger.info(f"Total exit events: {self.exit_count}")
         logger.info(f"Events saved to: {self.event_output_path}")
         logger.info(f"Tracked video saved to: {output_video_path}")
+        logger.info(f"Sessions saved to: {SESSION_OUTPUT_PATH}")
 
         return True
 
