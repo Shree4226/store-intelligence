@@ -286,6 +286,13 @@ class EntryEventGenerator:
             return elapsed_ms
         return None
 
+    def _billing_queue_depth(self, current_track_id: int) -> int:
+        return sum(
+            1
+            for track_id, track_history in self.track_history.items()
+            if track_id != current_track_id and track_history.get("current_zone") == "BILLING"
+        )
+
     def _write_event(self, event: Dict[str, object]) -> None:
         """Append a single event record to the JSONL file."""
         with self.event_output_path.open("a", encoding="utf-8") as handle:
@@ -365,6 +372,20 @@ class EntryEventGenerator:
             )
             self._write_event(event)
             events.append(event)
+
+            if history["current_zone"] == "BILLING":
+                queue_depth = self._billing_queue_depth(track_id)
+                if queue_depth > 0:
+                    queue_event = self._event_payload(
+                        "BILLING_QUEUE_JOIN",
+                        track_id,
+                        visitor_id,
+                        zone_id=history["current_zone"],
+                        confidence=zone_confidence,
+                    )
+                    queue_event["queue_depth"] = queue_depth
+                    self._write_event(queue_event)
+                    events.append(queue_event)
 
         dwell_ms = self._should_generate_dwell(history)
         if dwell_ms is not None:
