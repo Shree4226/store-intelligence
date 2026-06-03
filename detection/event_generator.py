@@ -19,10 +19,13 @@ import numpy as np
 import ultralytics
 from ultralytics import YOLO
 from session_manager import SessionManager
+from event_builder import EventBuilder
 from zone_manager import ZoneManager
 
 
 # Configuration
+STORE_ID = "STORE_BLR_002"
+CAMERA_ID = "CAM_ENTRY_01"
 ENTRY_POLYGON: Tuple[Tuple[int, int], ...] = (
     (930,170),
     (1250,170),
@@ -35,7 +38,6 @@ OUTPUT_VIDEO_PATH = "generated/debug/store1_entry_tracking.mp4"
 FRAME_SKIP = 5
 INPUT_WIDTH = 640
 CONFIDENCE_THRESHOLD = 0.35
-CAMERA_ID = "CAM3"
 
 
 # Configure logging
@@ -69,6 +71,7 @@ class EntryEventGenerator:
         self.session_manager = SessionManager()
         self.session_manager.load_sessions()
         self.zone_manager = ZoneManager()
+        self.event_builder = EventBuilder(STORE_ID, CAMERA_ID, self.session_manager)
         self.recent_exited_visitors: Dict[int, Dict[str, object]] = {}
         self.reentry_history: List[Dict[str, object]] = []
         self.entry_count = 0
@@ -193,25 +196,18 @@ class EntryEventGenerator:
         visitor_id: Optional[str] = None,
         zone_id: Optional[str] = None,
         confidence: Optional[float] = None,
+        dwell_ms: Optional[int] = None,
+        metadata: Optional[Dict[str, object]] = None,
     ) -> Dict[str, object]:
         """Build an event payload for JSONL output."""
-        payload: Dict[str, object] = {
-            "event_id": str(uuid.uuid4()),
-            "event_type": event_type,
-            "track_id": track_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "camera_id": CAMERA_ID,
-        }
-        if visitor_id is not None:
-            payload["visitor_id"] = visitor_id
-            session = self.session_manager.get_session(visitor_id)
-            if session is not None and session.get("is_staff", False):
-                payload["is_staff"] = True
-        if zone_id is not None:
-            payload["zone_id"] = zone_id
-        if confidence is not None:
-            payload["confidence"] = confidence
-        return payload
+        return self.event_builder.build_event(
+            event_type=event_type,
+            visitor_id=visitor_id,
+            zone_id=zone_id,
+            confidence=confidence,
+            dwell_ms=dwell_ms,
+            metadata=metadata,
+        )
 
     def _update_track_history(
         self,
@@ -400,24 +396,15 @@ class EntryEventGenerator:
                         visitor_id,
                         zone_id=history["current_zone"],
                         confidence=zone_confidence,
-                    )
-                    queue_event["queue_depth"] = queue_depth
-                    self._write_event(queue_event)
-                    events.append(queue_event)
-
-        dwell_ms = self._should_generate_dwell(history)
-        if dwell_ms is not None:
-            visitor_id = self.session_manager.get_visitor_id(track_id)
-            if visitor_id is None:
-                visitor_id = self.session_manager.create_entry_session(track_id)
-            event = self._event_payload(
+                            metadata={"queue_depth": queue_depth},
+                        )
                 "ZONE_DWELL",
                 track_id,
                 visitor_id,
                 zone_id=history["current_zone"],
                 confidence=zone_confidence,
+                dwell_ms=dwell_ms,
             )
-            event["dwell_ms"] = dwell_ms
             self._write_event(event)
             history["dwell_count"] = int(dwell_ms // 30000)
             events.append(event)
