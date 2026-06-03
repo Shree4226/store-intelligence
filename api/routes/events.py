@@ -3,8 +3,9 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Body, HTTPException
 
 from models.event import EventIn, IngestResponse
+from models.funnel import FunnelResponse
 from models.metrics import MetricsResponse
-from services.events import get_metrics_for_store, ingest_events
+from services.events import get_funnel_for_store, get_metrics_for_store, ingest_events
 
 router = APIRouter()
 
@@ -37,3 +38,9 @@ async def ingest_events_route(
 async def get_store_metrics(store_id: str) -> MetricsResponse:
     metrics = get_metrics_for_store(store_id)
     return MetricsResponse(**metrics)
+
+
+@router.get("/stores/{store_id}/funnel", response_model=FunnelResponse)
+async def get_store_funnel(store_id: str) -> FunnelResponse:
+    funnel = get_funnel_for_store(store_id)
+    return FunnelResponse(**funnel)
