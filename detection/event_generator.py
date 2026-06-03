@@ -51,6 +51,7 @@ class EntryEventGenerator:
 
     DEFAULT_MODEL = "yolov8n.pt"
     DEVICE = "cpu"
+    REENTRY_RETENTION_SECONDS = 600
 
     def __init__(
         self,
@@ -68,6 +69,8 @@ class EntryEventGenerator:
         self.session_manager = SessionManager()
         self.session_manager.load_sessions()
         self.zone_manager = ZoneManager()
+        self.recent_exited_visitors: Dict[int, Dict[str, object]] = {}
+        self.reentry_history: List[Dict[str, object]] = []
         self.entry_count = 0
         self.exit_count = 0
         self.load_model()
@@ -81,6 +84,28 @@ class EntryEventGenerator:
             logger.error(error_msg)
             raise FileNotFoundError(error_msg)
         return str(config_path)
+
+    def _cleanup_recent_exited(self) -> None:
+        cutoff = time.time() - self.REENTRY_RETENTION_SECONDS
+        self.recent_exited_visitors = {
+            track_id: data
+            for track_id, data in self.recent_exited_visitors.items()
+            if data["exit_time"] >= cutoff
+        }
+
+    def _get_reentry_visitor_id(self, track_id: int) -> Optional[str]:
+        self._cleanup_recent_exited()
+        exited = self.recent_exited_visitors.get(track_id)
+        return exited["visitor_id"] if exited is not None else None
+
+    def _record_reentry(self, track_id: int, visitor_id: str) -> None:
+        self.reentry_history.append(
+            {
+                "track_id": track_id,
+                "visitor_id": visitor_id,
+                "reentry_time": datetime.utcnow().isoformat() + "Z",
+            }
+        )
 
     def load_model(self) -> None:
         """Load the YOLOv8 model and move it to CPU."""
@@ -336,7 +361,22 @@ class EntryEventGenerator:
             events.append(event)
 
         if self._should_generate_entry(history):
-            visitor_id = self.session_manager.create_entry_session(track_id)
+            reentry_id = self._get_reentry_visitor_id(track_id)
+            if reentry_id is not None:
+                visitor_id = self.session_manager.restore_entry_session(track_id, reentry_id)
+                reentry_event = self._event_payload(
+                    "REENTRY",
+                    track_id,
+                    visitor_id,
+                    zone_id=history["current_zone"],
+                    confidence=zone_confidence,
+                )
+                self._write_event(reentry_event)
+                self._record_reentry(track_id, visitor_id)
+                self.recent_exited_visitors.pop(track_id, None)
+                events.append(reentry_event)
+            else:
+                visitor_id = self.session_manager.create_entry_session(track_id)
             event = self._event_payload("entry", track_id, visitor_id)
             self._write_event(event)
             self.session_manager.increment_event_count(visitor_id)
@@ -351,6 +391,11 @@ class EntryEventGenerator:
             if visitor_id is not None:
                 self.session_manager.increment_event_count(visitor_id)
             self.session_manager.close_session(track_id)
+            if visitor_id is not None:
+                self.recent_exited_visitors[track_id] = {
+                    "visitor_id": visitor_id,
+                    "exit_time": time.time(),
+                }
             self.exit_count += 1
             history["last_event"] = "exit"
             events.append(event)

@@ -44,6 +44,38 @@ class SessionManager:
         self.active_sessions[track_id] = session
         return visitor_id
 
+    def restore_entry_session(
+        self,
+        track_id: int,
+        visitor_id: str,
+        entry_time: Optional[str] = None,
+    ) -> str:
+        """Restore a closed visitor session for re-entry using the original visitor ID."""
+        if track_id in self.active_sessions:
+            return self.active_sessions[track_id]["visitor_id"]
+
+        existing = next(
+            (session for session in self.closed_sessions if session["visitor_id"] == visitor_id),
+            None,
+        )
+        entry_time = entry_time or datetime.utcnow().isoformat() + "Z"
+        sequence = existing["sequence"] if existing is not None else self._next_sequence
+        if existing is None:
+            self._next_sequence += 1
+
+        session = {
+            "visitor_id": visitor_id,
+            "track_id": track_id,
+            "entry_time": entry_time,
+            "exit_time": None,
+            "event_count": existing["event_count"] if existing is not None else 0,
+            "sequence": sequence,
+            "status": "active",
+        }
+
+        self.active_sessions[track_id] = session
+        return visitor_id
+
     def close_session(self, track_id: int, exit_time: Optional[str] = None) -> Optional[Dict[str, object]]:
         """Close the active session for a track when an EXIT event occurs."""
         session = self.active_sessions.pop(track_id, None)
