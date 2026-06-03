@@ -4,8 +4,9 @@ from fastapi import APIRouter, Body, HTTPException
 
 from models.event import EventIn, IngestResponse
 from models.funnel import FunnelResponse
+from models.heatmap import HeatmapResponse
 from models.metrics import MetricsResponse
-from services.events import get_funnel_for_store, get_metrics_for_store, ingest_events
+from services.events import get_funnel_for_store, get_heatmap_for_store, get_metrics_for_store, ingest_events
 
 router = APIRouter()
 
@@ -44,3 +45,9 @@ async def get_store_metrics(store_id: str) -> MetricsResponse:
 async def get_store_funnel(store_id: str) -> FunnelResponse:
     funnel = get_funnel_for_store(store_id)
     return FunnelResponse(**funnel)
+
+
+@router.get("/stores/{store_id}/heatmap", response_model=HeatmapResponse)
+async def get_store_heatmap(store_id: str) -> HeatmapResponse:
+    heatmap = get_heatmap_for_store(store_id)
+    return HeatmapResponse(**heatmap)

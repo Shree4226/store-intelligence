@@ -144,3 +144,58 @@ def get_funnel_for_store(store_id: str) -> Dict[str, object]:
         "purchase_visitors": purchase_visitors,
         "dropoff_percent": dropoff_percent,
     }
+
+
+def get_heatmap_for_store(store_id: str) -> Dict[str, object]:
+    events = [
+        event
+        for event in _get_event_store().values()
+        if event.get("store_id") == store_id and not bool(event.get("is_staff", False))
+    ]
+
+    unique_visitors = len(
+        {event.get("visitor_id") for event in events if isinstance(event.get("visitor_id"), str) and event.get("visitor_id")}
+    )
+
+    zone_visits: Dict[str, int] = {}
+    zone_dwell: Dict[str, List[float]] = {}
+
+    for event in events:
+        zone_id = event.get("zone_id")
+        event_type = event.get("event_type")
+
+        if isinstance(zone_id, str) and zone_id:
+            if isinstance(event_type, str) and event_type.upper() == "ZONE_ENTER":
+                zone_visits[zone_id] = zone_visits.get(zone_id, 0) + 1
+
+            if isinstance(event_type, str) and event_type.upper() == "ZONE_DWELL":
+                dwell_ms = event.get("dwell_ms")
+                if isinstance(dwell_ms, (int, float)) and dwell_ms >= 0:
+                    if zone_id not in zone_dwell:
+                        zone_dwell[zone_id] = []
+                    zone_dwell[zone_id].append(float(dwell_ms) / 1000.0)
+
+    max_visit_count = max(zone_visits.values()) if zone_visits else 0
+
+    zone_data = []
+    for zone_id in sorted(set(zone_visits.keys()) | set(zone_dwell.keys())):
+        visit_count = zone_visits.get(zone_id, 0)
+        dwell_list = zone_dwell.get(zone_id, [])
+        avg_dwell_seconds = sum(dwell_list) / len(dwell_list) if dwell_list else 0.0
+        score_0_to_100 = (visit_count / max_visit_count * 100.0) if max_visit_count > 0 else 0.0
+
+        zone_data.append(
+            {
+                "zone_id": zone_id,
+                "visit_count": visit_count,
+                "avg_dwell_seconds": round(avg_dwell_seconds, 2),
+                "score_0_to_100": round(score_0_to_100, 2),
+            }
+        )
+
+    data_confidence = "HIGH" if unique_visitors >= 20 else "LOW"
+
+    return {
+        "data_confidence": data_confidence,
+        "zones": zone_data,
+    }
