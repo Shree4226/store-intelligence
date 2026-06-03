@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -18,6 +19,7 @@ import numpy as np
 import ultralytics
 from ultralytics import YOLO
 from session_manager import SessionManager
+from zone_manager import ZoneManager
 
 
 # Configuration
@@ -65,6 +67,7 @@ class EntryEventGenerator:
         self.track_history: Dict[int, Dict[str, object]] = {}
         self.session_manager = SessionManager()
         self.session_manager.load_sessions()
+        self.zone_manager = ZoneManager()
         self.entry_count = 0
         self.exit_count = 0
         self.load_model()
@@ -144,9 +147,12 @@ class EntryEventGenerator:
         event_type: str,
         track_id: int,
         visitor_id: Optional[str] = None,
+        zone_id: Optional[str] = None,
+        confidence: Optional[float] = None,
     ) -> Dict[str, object]:
         """Build an event payload for JSONL output."""
         payload: Dict[str, object] = {
+            "event_id": str(uuid.uuid4()),
             "event_type": event_type,
             "track_id": track_id,
             "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -154,6 +160,10 @@ class EntryEventGenerator:
         }
         if visitor_id is not None:
             payload["visitor_id"] = visitor_id
+        if zone_id is not None:
+            payload["zone_id"] = zone_id
+        if confidence is not None:
+            payload["confidence"] = confidence
         return payload
 
     def _update_track_history(
@@ -161,14 +171,28 @@ class EntryEventGenerator:
         track_id: int,
         centroid: Tuple[float, float],
         inside: bool,
+        current_zone: Optional[str],
     ) -> Dict[str, object]:
         previous = self.track_history.get(track_id, {})
         prev_inside = previous.get("current_inside", False)
+        previous_zone = previous.get("current_zone")
+        same_zone = current_zone is not None and previous_zone == current_zone
+        zone_enter_time = previous.get("zone_enter_time")
+        dwell_count = previous.get("dwell_count", 0)
+
+        if not same_zone:
+            zone_enter_time = time.time() if current_zone is not None else None
+            dwell_count = 0
+
         history = {
             "previous_centroid": previous.get("current_centroid", centroid),
             "current_centroid": centroid,
             "previous_inside": prev_inside,
             "current_inside": inside,
+            "previous_zone": previous_zone,
+            "current_zone": current_zone,
+            "zone_enter_time": zone_enter_time,
+            "dwell_count": dwell_count,
             "entry_streak": previous.get("entry_streak", 0),
             "exit_streak": previous.get("exit_streak", 0),
             "entry_candidate": previous.get("entry_candidate", False),
@@ -204,6 +228,16 @@ class EntryEventGenerator:
             history["exit_streak"] = 0
 
         return history
+
+    def _should_generate_dwell(self, history: Dict[str, object]) -> Optional[int]:
+        if history["current_zone"] is None or history["zone_enter_time"] is None:
+            return None
+
+        elapsed_ms = int((time.time() - history["zone_enter_time"]) * 1000)
+        next_count = elapsed_ms // 30000
+        if next_count > history["dwell_count"]:
+            return elapsed_ms
+        return None
 
     def _write_event(self, event: Dict[str, object]) -> None:
         """Append a single event record to the JSONL file."""
@@ -243,9 +277,64 @@ class EntryEventGenerator:
             return None
 
         inside = self.is_inside_polygon(centroid, ENTRY_POLYGON)
-        history = self._update_track_history(track_id, centroid, inside)
+        current_zone = self.zone_manager.get_current_zone((int(centroid[0]), int(centroid[1])))
+        history = self._update_track_history(track_id, centroid, inside, current_zone)
 
         direction = None
+        zone_confidence = (
+            float(box.conf[0])
+            if hasattr(box, "conf") and getattr(box, "conf") is not None and len(box.conf) > 0
+            else 0.0
+        )
+
+        if (
+            history["previous_zone"] is not None
+            and history["previous_zone"] != history["current_zone"]
+        ):
+            visitor_id = self.session_manager.get_visitor_id(track_id)
+            if visitor_id is None:
+                visitor_id = self.session_manager.create_entry_session(track_id)
+            event = self._event_payload(
+                "ZONE_EXIT",
+                track_id,
+                visitor_id,
+                zone_id=history["previous_zone"],
+                confidence=zone_confidence,
+            )
+            self._write_event(event)
+            events.append(event)
+
+        if history["previous_zone"] != history["current_zone"] and history["current_zone"] is not None:
+            visitor_id = self.session_manager.get_visitor_id(track_id)
+            if visitor_id is None:
+                visitor_id = self.session_manager.create_entry_session(track_id)
+            event = self._event_payload(
+                "ZONE_ENTER",
+                track_id,
+                visitor_id,
+                zone_id=history["current_zone"],
+                confidence=zone_confidence,
+            )
+            self._write_event(event)
+            events.append(event)
+
+        dwell_ms = self._should_generate_dwell(history)
+        if dwell_ms is not None:
+            visitor_id = self.session_manager.get_visitor_id(track_id)
+            if visitor_id is None:
+                visitor_id = self.session_manager.create_entry_session(track_id)
+            event = self._event_payload(
+                "ZONE_DWELL",
+                track_id,
+                visitor_id,
+                zone_id=history["current_zone"],
+                confidence=zone_confidence,
+            )
+            event["dwell_ms"] = dwell_ms
+            self._write_event(event)
+            history["dwell_count"] = int(dwell_ms // 30000)
+            events.append(event)
+
         if self._should_generate_entry(history):
             visitor_id = self.session_manager.create_entry_session(track_id)
             event = self._event_payload("entry", track_id, visitor_id)
@@ -320,10 +409,21 @@ class EntryEventGenerator:
 
                 cv2.rectangle(annotated, (x1b, y1b), (x2b, y2b), box_color, 2)
                 cv2.circle(annotated, (int(centroid[0]), int(centroid[1])), 4, (255, 0, 0), -1)
+                zone_id = history.get("current_zone")
+                zone_name = self.zone_manager.get_zone_name(zone_id) if zone_id else "UNKNOWN"
                 cv2.putText(
                     annotated,
                     f"ID:{track_id}",
-                    (x1b, y1b - 30),
+                    (x1b, y1b - 40),
+                    font,
+                    font_scale,
+                    text_color,
+                    thickness,
+                )
+                cv2.putText(
+                    annotated,
+                    f"ZONE:{zone_name}",
+                    (x1b, y1b - 15),
                     font,
                     font_scale,
                     text_color,
@@ -332,7 +432,7 @@ class EntryEventGenerator:
                 cv2.putText(
                     annotated,
                     f"C:{int(centroid[0])},{int(centroid[1])}",
-                    (x1b, y1b - 10),
+                    (x1b, y2b + 20),
                     font,
                     0.5,
                     text_color,
@@ -341,7 +441,7 @@ class EntryEventGenerator:
                 cv2.putText(
                     annotated,
                     f"{inside_state} {directions.get(track_id, '')}",
-                    (x1b, y2b + 20),
+                    (x1b, min(y2b + 40, annotated.shape[0] - 10)),
                     font,
                     font_scale,
                     direction_color,
