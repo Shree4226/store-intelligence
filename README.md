@@ -36,7 +36,29 @@ Metrics / Funnel / Heatmap / Anomalies
 Streamlit Live Dashboard
 ```
 
-## Setup
+## Quick Start (Docker)
+
+```bash
+git clone https://github.com/Shree4226/store-intelligence
+cd store-intelligence
+docker compose up --build
+```
+
+Open:
+
+```text
+http://localhost:8000/docs
+```
+
+Dashboard:
+
+```text
+http://localhost:8501
+```
+
+---
+
+## Local Development Setup
 
 Run exactly these 5 commands from the project root:
 
@@ -47,6 +69,7 @@ python -m pip install -r api\requirements.txt
 python -m pip install -r requirements-dev.txt
 python api\generate_sample_events.py
 ```
+
 
 ## Running Detection Pipeline
 

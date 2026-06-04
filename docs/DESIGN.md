@@ -55,3 +55,22 @@ Generated artifacts such as JSONL files, debug videos, and session files are wri
 - YOLOv8 suggested by AI: accepted. It was chosen because it is lightweight, well documented, and practical for person detection on local CPU using the nano model.
 - ByteTrack suggested by AI: accepted with modification. The recommendation was accepted for multi-object tracking, but the project wraps tracker IDs with a separate session manager so visitor IDs remain stable at the business-event level.
 - FastAPI architecture suggested by AI: accepted. FastAPI was used because it gives simple routing, response models, OpenAPI docs, and easy local testing with minimal boilerplate.
+
+# Live Dashboard
+
+A Streamlit dashboard consumes analytics from the FastAPI backend.
+
+The dashboard polls:
+
+- GET /stores/{store_id}/metrics
+
+and displays:
+
+- visitor count
+- entry count
+- exit count
+- average dwell time
+- queue depth
+
+This demonstrates an end-to-end connection between the detection
+pipeline, event ingestion API, analytics engine, and user interface.
