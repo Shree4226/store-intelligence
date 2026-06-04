@@ -9,7 +9,7 @@ import os
 
 API_URL = os.getenv(
     "API_URL",
-    "http://localhost:8000/stores/STORE_BLR_002/metrics",
+    "https://store-intelligence-7v85.onrender.com/stores/STORE_BLR_002/metrics",
 )
 
 REFRESH_SECONDS = 5
