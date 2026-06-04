@@ -191,27 +191,39 @@ api/
   main.py                 FastAPI app, middleware, exception handlers
   routes/                 API route definitions
   services/               In-memory storage and analytics logic
-  models/                 Pydantic response models
+  models/                 Pydantic request/response models
   generate_sample_events.py
   load_events.py
 
 detection/
   detect.py               YOLOv8 person detection
   tracker.py              ByteTrack-based tracking
-  event_generator.py      Entry, exit, zone, dwell, billing event generation
-  session_manager.py      Visitor session tracking
-  zone_manager.py         Zone polygon lookup
+  event_generator.py      Retail event generation
+  session_manager.py      Visitor session management
+  zone_manager.py         Zone polygon handling
   tools/                  Helper scripts
 
+dashboard/
+  app.py                  Streamlit live analytics dashboard
+
 config/
-  store_layout.json       Store zone layout
+  store_layout.json       Store zone layout configuration
 
 generated/
   events/                 Generated JSONL events and sessions
   debug/                  Debug frames and videos
 
 tests/
-  test_api.py             Pytest coverage for API readiness
+  test_api.py             API and ingestion tests
+
+docs/
+  DESIGN.md              System architecture and AI-assisted decisions
+  CHOICES.md             Design rationale and technology choices
+
+docker-compose.yml       Container orchestration
+Dockerfile               Application container definition
+requirements-dev.txt     Development and test dependencies
+README.md                Setup and usage instructions
 ```
 
 ## Sample API Requests
