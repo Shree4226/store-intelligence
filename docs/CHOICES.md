@@ -57,3 +57,29 @@ FastAPI.
 ## Reasoning
 
 FastAPI was chosen because the project needs clear API endpoints for ingestion, health checks, metrics, funnel, heatmap, and anomalies. Pydantic response models help keep responses consistent, and the built-in OpenAPI documentation makes the project easier to review and test.
+
+
+# VLM Usage Evaluation
+
+## Was a VLM used?
+
+No.
+
+## Reason
+
+The project focuses on person detection, tracking, visitor sessions,
+zone analytics, and retail event generation.
+
+These requirements were satisfied using YOLOv8 for detection and
+ByteTrack for tracking.
+
+A Vision Language Model was considered for advanced tasks such as:
+
+- staff/customer classification
+- automatic zone labeling
+- shelf activity understanding
+
+However, those features were outside the scope of the challenge and
+would increase inference cost and complexity.
+
+Therefore a VLM was not included in the final implementation.

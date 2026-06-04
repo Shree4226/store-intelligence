@@ -1,3 +1,15 @@
+# PROMPT:
+# Generate pytest tests for FastAPI ingestion,
+# duplicate event handling,
+# metrics endpoint,
+# health endpoint,
+# graceful degradation.
+
+# CHANGES MADE:
+# Added storage unavailable test manually.
+# Updated assertions to match project models.
+# Added project-specific edge case coverage.
+
 import asyncio
 
 from fastapi import Request

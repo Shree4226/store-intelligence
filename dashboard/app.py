@@ -5,7 +5,13 @@ import requests
 import streamlit as st
 
 
-API_URL = "http://localhost:8000/stores/STORE_BLR_002/metrics"
+import os
+
+API_URL = os.getenv(
+    "API_URL",
+    "http://localhost:8000/stores/STORE_BLR_002/metrics",
+)
+
 REFRESH_SECONDS = 5
 
 
