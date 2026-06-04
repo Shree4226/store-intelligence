@@ -1,12 +1,31 @@
+import logging
+import os
+import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from .storage import storage
 
+logger = logging.getLogger("store_intelligence.events")
 EVENTS_KEY = "events"
 STALE_FEED_SECONDS = 10 * 60
 TIMESTAMP_FIELDS = ("timestamp", "event_timestamp", "event_time")
 STORE_ID_FIELDS = ("store_id", "store_code")
+
+
+def _debug(message: str, **fields: object) -> None:
+    if os.getenv("EVENT_DEBUG") != "1":
+        return
+    logger.info(
+        "EVENT_DEBUG %s %s",
+        message,
+        {
+            "module": __name__,
+            "module_id": id(sys.modules[__name__]),
+            "storage_id": id(storage),
+            **fields,
+        },
+    )
 
 
 def _get_event_store() -> Dict[str, Dict[str, Any]]:
@@ -22,6 +41,7 @@ def ingest_events(events: List[Dict[str, Any]]) -> Dict[str, int]:
     accepted_count = 0
     duplicate_count = 0
     rejected_count = 0
+    _debug("ingest_start", incoming_count=len(events), existing_count=len(event_store))
 
     for event in events:
         event_id = event.get("event_id")
@@ -37,6 +57,20 @@ def ingest_events(events: List[Dict[str, Any]]) -> Dict[str, int]:
         accepted_count += 1
 
     storage.set(EVENTS_KEY, event_store)
+    _debug(
+        "ingest_done",
+        accepted_count=accepted_count,
+        duplicate_count=duplicate_count,
+        rejected_count=rejected_count,
+        stored_count=len(event_store),
+        store_ids=sorted(
+            {
+                event.get("store_id")
+                for event in event_store.values()
+                if isinstance(event.get("store_id"), str)
+            }
+        ),
+    )
     return {
         "accepted_count": accepted_count,
         "duplicate_count": duplicate_count,
@@ -116,11 +150,25 @@ def get_health_summary() -> Dict[str, object]:
 
 
 def get_metrics_for_store(store_id: str) -> Dict[str, object]:
+    event_store = _get_event_store()
     events = [
         event
-        for event in _get_event_store().values()
+        for event in event_store.values()
         if event.get("store_id") == store_id and not bool(event.get("is_staff", False))
     ]
+    _debug(
+        "metrics_read",
+        requested_store_id=store_id,
+        total_stored_count=len(event_store),
+        matched_count=len(events),
+        store_ids=sorted(
+            {
+                event.get("store_id")
+                for event in event_store.values()
+                if isinstance(event.get("store_id"), str)
+            }
+        ),
+    )
 
     unique_visitors = len({event.get("visitor_id") for event in events if isinstance(event.get("visitor_id"), str) and event.get("visitor_id")})
     entry_count = sum(1 for event in events if isinstance(event.get("event_type"), str) and event.get("event_type").lower() == "entry")

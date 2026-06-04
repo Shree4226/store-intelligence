@@ -21,14 +21,19 @@ Session Manager + Zone Manager
     v
 Retail Event JSONL
     |
-    v
-FastAPI Ingestion API
-    |
-    v
-In-Memory Event Store
-    |
-    v
+    +--------------------+
+    |                    |
+    v                    |
+FastAPI Ingestion API    |
+    |                    |
+    v                    |
+Analytics Engine         |
+    |                    |
+    v                    |
 Metrics / Funnel / Heatmap / Anomalies
+    |
+    v
+Streamlit Live Dashboard
 ```
 
 ## Setup
@@ -68,6 +73,87 @@ docker compose up --build
 ```
 
 The API runs on `http://127.0.0.1:8000`.
+
+## Live Dashboard
+
+A Streamlit dashboard is included to demonstrate real-time store analytics.
+
+The dashboard continuously polls the FastAPI backend and displays live store metrics generated from ingested retail events.
+
+### Features
+
+* Live visitor count
+* Entry and exit statistics
+* Average dwell time
+* Billing queue depth
+* Queue abandonment rate
+* Automatic refresh from FastAPI endpoints
+
+### Running the Dashboard
+
+Make sure the FastAPI API is running first:
+
+```powershell
+uvicorn api.main:app --reload
+```
+
+Start Streamlit:
+
+```powershell
+streamlit run dashboard/app.py
+```
+
+The dashboard will be available at:
+
+```text
+http://localhost:8501
+```
+
+### Dashboard Data Flow
+
+```text
+Detection Pipeline
+      |
+      v
+Generated Events (JSONL)
+      |
+      v
+POST /events/ingest
+      |
+      v
+FastAPI Analytics Engine
+      |
+      v
+Streamlit Dashboard
+```
+
+### Demo Workflow
+
+1. Start FastAPI.
+2. Ingest events using:
+
+```powershell
+python api/load_events.py
+```
+
+3. Launch Streamlit:
+
+```powershell
+streamlit run dashboard/app.py
+```
+
+4. Open:
+
+```text
+http://localhost:8501
+```
+
+5. Observe metrics updating from the API in real time.
+
+### Bonus Feature (Part E)
+
+The dashboard provides a live view of store intelligence metrics and demonstrates that the detection pipeline, ingestion API, analytics layer, and frontend dashboard are connected end-to-end rather than operating as isolated batch processes.
+
 
 ## Running Tests
 
@@ -170,3 +256,7 @@ Production readiness features: Docker support, structured JSON request logging, 
 ### Part D
 
 Documentation and decision rationale through `README.md`, `DESIGN.md`, and `CHOICES.md`.
+
+### Part E (Bonus)
+
+Implemented a Streamlit-based live dashboard that consumes FastAPI analytics endpoints and displays real-time store metrics, demonstrating end-to-end integration between the detection pipeline, analytics API, and visualization layer.
