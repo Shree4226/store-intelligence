@@ -1,4 +1,5 @@
 data/
+generated/
 *.mp4
 *.avi
 *.mov

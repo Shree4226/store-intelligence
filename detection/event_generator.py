@@ -14,13 +14,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+ULTRALYTICS_CONFIG_DIR = Path("generated/ultralytics").resolve()
+ULTRALYTICS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("YOLO_CONFIG_DIR", str(ULTRALYTICS_CONFIG_DIR))
+
 import cv2
 import numpy as np
 import ultralytics
 from ultralytics import YOLO
-from session_manager import SessionManager
-from event_builder import EventBuilder
-from zone_manager import ZoneManager
+try:
+    from detection.event_builder import EventBuilder
+    from detection.session_manager import SESSION_OUTPUT_PATH, SessionManager
+    from detection.zone_manager import ZoneManager
+except ModuleNotFoundError:
+    from event_builder import EventBuilder
+    from session_manager import SESSION_OUTPUT_PATH, SessionManager
+    from zone_manager import ZoneManager
 
 
 # Configuration
@@ -300,14 +309,14 @@ class EntryEventGenerator:
         return (
             history["entry_candidate"]
             and history["entry_streak"] >= 3
-            and history["last_event"] != "entry"
+            and history["last_event"] != "ENTRY"
         )
 
     def _should_generate_exit(self, history: Dict[str, object]) -> bool:
         return (
             history["exit_candidate"]
             and history["exit_streak"] >= 3
-            and history["last_event"] != "exit"
+            and history["last_event"] != "EXIT"
         )
 
     def _process_track(
@@ -368,8 +377,8 @@ class EntryEventGenerator:
                             visitor_id,
                             zone_id=history["previous_zone"],
                             confidence=zone_confidence,
+                            metadata={"queue_depth": self._billing_queue_depth(track_id)},
                         )
-                        abandon_event["billing_duration_s"] = round(billing_duration, 2)
                         self._write_event(abandon_event)
                         events.append(abandon_event)
 
@@ -396,8 +405,17 @@ class EntryEventGenerator:
                         visitor_id,
                         zone_id=history["current_zone"],
                         confidence=zone_confidence,
-                            metadata={"queue_depth": queue_depth},
-                        )
+                        metadata={"queue_depth": queue_depth},
+                    )
+                    self._write_event(queue_event)
+                    events.append(queue_event)
+
+        dwell_ms = self._should_generate_dwell(history)
+        if dwell_ms is not None:
+            visitor_id = self.session_manager.get_visitor_id(track_id)
+            if visitor_id is None:
+                visitor_id = self.session_manager.create_entry_session(track_id)
+            event = self._event_payload(
                 "ZONE_DWELL",
                 track_id,
                 visitor_id,
@@ -426,16 +444,16 @@ class EntryEventGenerator:
                 events.append(reentry_event)
             else:
                 visitor_id = self.session_manager.create_entry_session(track_id)
-            event = self._event_payload("entry", track_id, visitor_id)
+            event = self._event_payload("ENTRY", track_id, visitor_id)
             self._write_event(event)
             self.session_manager.increment_event_count(visitor_id)
             self.entry_count += 1
-            history["last_event"] = "entry"
+            history["last_event"] = "ENTRY"
             events.append(event)
             direction = "entry"
         elif self._should_generate_exit(history):
             visitor_id = self.session_manager.get_visitor_id(track_id)
-            event = self._event_payload("exit", track_id, visitor_id)
+            event = self._event_payload("EXIT", track_id, visitor_id)
             self._write_event(event)
             if visitor_id is not None:
                 self.session_manager.increment_event_count(visitor_id)
@@ -446,7 +464,7 @@ class EntryEventGenerator:
                     "exit_time": time.time(),
                 }
             self.exit_count += 1
-            history["last_event"] = "exit"
+            history["last_event"] = "EXIT"
             events.append(event)
             direction = "exit"
 

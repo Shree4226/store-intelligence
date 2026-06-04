@@ -2,7 +2,7 @@ from pathlib import Path
 
 import cv2
 
-VIDEO_PATH = Path("data/stores/store_1/videos/CAM1 - Zone A.mp4.\venv\Scripts\python.exe detection/tools/extract_frame.py")
+VIDEO_PATH = Path("data/stores/store_1/videos/CAM 3 - entry.mp4")
 OUTPUT_PATH = Path("generated/debug/frame_100.jpg")
 FRAME_NUMBER = 100
 

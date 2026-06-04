@@ -2,7 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Dict, Optional
 
-from session_manager import SessionManager
+try:
+    from detection.session_manager import SessionManager
+except ModuleNotFoundError:
+    from session_manager import SessionManager
 
 
 class EventBuilder:
@@ -47,7 +50,7 @@ class EventBuilder:
             "confidence": float(confidence) if confidence is not None else 0.0,
             "metadata": {
                 "queue_depth": None,
-                "sku_zone": "",
+                "sku_zone": None,
                 "session_seq": session_seq,
             },
         }

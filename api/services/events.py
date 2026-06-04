@@ -1,8 +1,12 @@
-from typing import Any, Dict, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 from .storage import storage
 
 EVENTS_KEY = "events"
+STALE_FEED_SECONDS = 10 * 60
+TIMESTAMP_FIELDS = ("timestamp", "event_timestamp", "event_time")
+STORE_ID_FIELDS = ("store_id", "store_code")
 
 
 def _get_event_store() -> Dict[str, Dict[str, Any]]:
@@ -42,6 +46,73 @@ def ingest_events(events: List[Dict[str, Any]]) -> Dict[str, int]:
 
 def get_all_events() -> Dict[str, Dict[str, Any]]:
     return _get_event_store()
+
+
+def _parse_event_timestamp(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    normalized_value = value.strip()
+    if normalized_value.endswith("Z"):
+        normalized_value = f"{normalized_value[:-1]}+00:00"
+
+    try:
+        timestamp = datetime.fromisoformat(normalized_value)
+    except ValueError:
+        return None
+
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+
+    return timestamp.astimezone(timezone.utc)
+
+
+def _event_timestamp(event: Dict[str, Any]) -> Optional[Tuple[datetime, str]]:
+    for field_name in TIMESTAMP_FIELDS:
+        value = event.get(field_name)
+        timestamp = _parse_event_timestamp(value)
+        if timestamp is not None and isinstance(value, str):
+            return timestamp, value
+
+    return None
+
+
+def get_health_summary() -> Dict[str, object]:
+    events = list(_get_event_store().values())
+    stores_monitored = len(
+        {
+            event.get(field_name)
+            for event in events
+            for field_name in STORE_ID_FIELDS
+            if isinstance(event.get(field_name), str) and event.get(field_name)
+        }
+    )
+
+    latest_timestamp: Optional[datetime] = None
+    latest_timestamp_value: Optional[str] = None
+    for event in events:
+        parsed_timestamp = _event_timestamp(event)
+        if parsed_timestamp is None:
+            continue
+
+        timestamp, timestamp_value = parsed_timestamp
+        if latest_timestamp is None or timestamp > latest_timestamp:
+            latest_timestamp = timestamp
+            latest_timestamp_value = timestamp_value
+
+    summary: Dict[str, object] = {
+        "status": "healthy",
+        "stores_monitored": stores_monitored,
+        "events_received": len(events),
+        "last_event_timestamp": latest_timestamp_value,
+    }
+
+    if latest_timestamp is not None:
+        age_seconds = (datetime.now(timezone.utc) - latest_timestamp).total_seconds()
+        if age_seconds > STALE_FEED_SECONDS:
+            summary["warning"] = "STALE_FEED"
+
+    return summary
 
 
 def get_metrics_for_store(store_id: str) -> Dict[str, object]:
@@ -101,6 +172,57 @@ def get_metrics_for_store(store_id: str) -> Dict[str, object]:
         "avg_dwell_seconds": avg_dwell_seconds,
         "queue_depth": queue_depth,
         "abandonment_rate": abandonment_rate,
+    }
+
+
+def get_anomalies_for_store(store_id: str) -> Dict[str, object]:
+    events = [
+        event
+        for event in _get_event_store().values()
+        if event.get("store_id") == store_id and not bool(event.get("is_staff", False))
+    ]
+    metrics = get_metrics_for_store(store_id)
+    anomalies: List[Dict[str, object]] = []
+
+    if not events:
+        anomalies.append(
+            {
+                "anomaly_type": "NO_EVENTS",
+                "severity": "HIGH",
+                "message": "No events have been ingested for this store.",
+                "value": 0.0,
+            }
+        )
+
+    abandonment_rate = float(metrics["abandonment_rate"])
+    if abandonment_rate >= 0.5:
+        anomalies.append(
+            {
+                "anomaly_type": "HIGH_ABANDONMENT_RATE",
+                "severity": "MEDIUM",
+                "message": "Billing queue abandonment rate is elevated.",
+                "value": abandonment_rate,
+            }
+        )
+
+    low_confidence_count = sum(
+        1
+        for event in events
+        if isinstance(event.get("confidence"), (int, float)) and float(event.get("confidence")) < 0.5
+    )
+    if low_confidence_count > 0:
+        anomalies.append(
+            {
+                "anomaly_type": "LOW_CONFIDENCE_EVENTS",
+                "severity": "LOW",
+                "message": "One or more events were generated with low model confidence.",
+                "value": float(low_confidence_count),
+            }
+        )
+
+    return {
+        "store_id": store_id,
+        "anomalies": anomalies,
     }
 
 

@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-STORE_LAYOUT_PATH = Path("E:\store-intelligence\config\store_layout.json")
+STORE_LAYOUT_PATH = Path(__file__).resolve().parents[1] / "config" / "store_layout.json"
 Point = Tuple[int, int]
 Polygon = List[Point]
 

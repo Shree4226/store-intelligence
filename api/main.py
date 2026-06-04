@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from routes.events import router as events_router
-from routes.health import router as health_router
+from api.routes.events import router as events_router
+from api.routes.health import router as health_router
 
 app = FastAPI(
     title="Store Intelligence API",

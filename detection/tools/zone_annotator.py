@@ -5,7 +5,7 @@ from typing import List, Tuple
 import cv2
 import numpy as np
 
-IMAGE_PATH = Path("data/stores/store_1/frame_sample.jpg")
+IMAGE_PATH = Path("data/stores/store_1/layout/Store 1 - layout.png")
 OUTPUT_JSON_PATH = Path("generated/zones/skincare_zone.json")
 ZONE_NAME = "SKINCARE"
 

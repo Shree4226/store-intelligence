@@ -1,10 +1,11 @@
 from fastapi import APIRouter
 
-from models.health import HealthResponse
+from api.models.health import HealthResponse
+from api.services.events import get_health_summary
 
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, response_model_exclude_none=True)
 async def health() -> HealthResponse:
-    return HealthResponse(status="healthy", uptime_seconds=0.0)
+    return HealthResponse(**get_health_summary())

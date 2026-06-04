@@ -16,6 +16,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
+ULTRALYTICS_CONFIG_DIR = Path("generated/ultralytics").resolve()
+ULTRALYTICS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+os.environ.setdefault("YOLO_CONFIG_DIR", str(ULTRALYTICS_CONFIG_DIR))
+
 import cv2
 from ultralytics import YOLO
 
