@@ -1,6 +1,10 @@
 from typing import Any, Dict, Optional
 
 
+class StorageUnavailableError(RuntimeError):
+    """Raised when API state storage cannot be accessed."""
+
+
 class InMemoryStorage:
     """Simple in-memory key/value storage for API state."""
 
@@ -15,6 +19,9 @@ class InMemoryStorage:
 
     def all(self) -> Dict[str, Any]:
         return dict(self._data)
+
+    def clear(self) -> None:
+        self._data.clear()
 
 
 storage = InMemoryStorage()
